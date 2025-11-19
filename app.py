@@ -53,11 +53,16 @@ def send_email(name, email, phone, subject, message):
     msg.attach(MIMEText(body, "plain"))
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        smtp_host = os.getenv("EMAIL_HOST")
+        smtp_port = int(os.getenv("EMAIL_PORT"))
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
             server.login(sender, password)
             server.send_message(msg)
+
         print("✅ Email sent successfully")
+
     except Exception as e:
         print("❌ Email error:", e)
 
