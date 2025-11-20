@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import MySQLdb
 import smtplib
+import requests
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
@@ -30,41 +32,39 @@ def get_db_connection():
         return None
 
 
-# Send email via Gmail
+
 def send_email(name, email, phone, subject, message):
-    sender = os.getenv("EMAIL_USER")
-    password = os.getenv("EMAIL_PASS")
-    receiver = os.getenv("EMAIL_USER")
+    api_key = os.getenv("BREVO_API_KEY")
+    receiver = os.getenv("EMAIL_TO")
 
-    msg = MIMEMultipart()
-    msg["From"] = sender
-    msg["To"] = receiver
-    msg["Subject"] = f"New Contact Message from {name}"
+    url = "https://api.brevo.com/v3/smtp/email"
 
-    body = f"""
-    Name: {name}
-    Email: {email}
-    Phone: {phone}
-    Subject: {subject}
+    payload = {
+        "sender": {"name": "Codecype Website", "email": receiver},
+        "to": [{"email": receiver}],
+        "subject": f"New Contact Message from {name}",
+        "htmlContent": f"""
+            <h3>New Contact Message</h3>
+            <p><strong>Name:</strong> {name}</p>
+            <p><strong>Email:</strong> {email}</p>
+            <p><strong>Phone:</strong> {phone}</p>
+            <p><strong>Subject:</strong> {subject}</p>
+            <p><strong>Message:</strong><br>{message}</p>
+        """
+    }
 
-    Message:
-    {message}
-    """
-    msg.attach(MIMEText(body, "plain"))
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": api_key
+    }
 
     try:
-        smtp_host = os.getenv("EMAIL_HOST")
-        smtp_port = int(os.getenv("EMAIL_PORT"))
-
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(sender, password)
-            server.send_message(msg)
-
-        print("✅ Email sent successfully")
-
+        response = requests.post(url, json=payload, headers=headers)
+        print("📧 Brevo API Response:", response.status_code, response.text)
     except Exception as e:
-        print("❌ Email error:", e)
+        print("❌ Email Send Error:", e)
+
 
 
 # Route to receive messages
@@ -108,3 +108,4 @@ if __name__ == "__main__":
     print("🚀 Flask server starting...")
     print("Loaded ENV:", os.getenv("DB_NAME"), os.getenv("EMAIL_USER"))
     app.run(host="127.0.0.1", port=5000, debug=True)
+
