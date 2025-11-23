@@ -39,8 +39,13 @@ def send_email(name, email, phone, subject, message):
     api_key = os.getenv("BREVO_API_KEY")
 
     payload = {
-        "sender": {"email": os.getenv("EMAIL_USER"), "name": "Codechype"},
-        "to": [{"email": os.getenv("EMAIL_USER")}],
+        "sender": {
+            "email": os.getenv("EMAIL_FROM"),
+            "name": "Codechype"
+        },
+        "to": [
+            {"email": os.getenv("EMAIL_TO")}
+        ],
         "subject": f"New Contact Message From {name}",
         "htmlContent": f"""
             <h2>New Contact Form Message</h2>
@@ -142,3 +147,4 @@ def delete_msg(id):
     except Exception as e:
         print("❌ Delete error:", e)
         return jsonify({"success": False})
+
