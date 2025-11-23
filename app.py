@@ -1,72 +1,69 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import MySQLdb
+import psycopg2
+import psycopg2.extras
 import os
 from dotenv import load_dotenv
 import requests
 
-# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # -------------------------------
-# 🔗 DATABASE CONNECTION
+# PostgreSQL Connection
 # -------------------------------
 def get_db_connection():
     try:
-        conn = MySQLdb.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            passwd=os.getenv("DB_PASS"),
-            db=os.getenv("DB_NAME"),
-            charset="utf8mb4"
+        conn = psycopg2.connect(
+            host=os.getenv("PG_HOST"),
+            database=os.getenv("PG_DBNAME"),
+            user=os.getenv("PG_USER"),
+            password=os.getenv("PG_PASSWORD"),
+            port=os.getenv("PG_PORT"),
+            sslmode="require"
         )
-        print("✅ DB Connected")
+        print("✅ Connected to PostgreSQL successfully")
         return conn
     except Exception as e:
-        print("❌ DB Connection Error:", e)
+        print("❌ PostgreSQL Connection Error:", e)
         return None
 
 
 # -------------------------------
-# 📧 SEND EMAIL VIA BREVO
+# Brevo Email Sender
 # -------------------------------
 def send_email(name, email, phone, subject, message):
-    try:
-        url = "https://api.brevo.com/v3/smtp/email"
-        api_key = os.getenv("BREVO_API_KEY")
+    url = "https://api.brevo.com/v3/smtp/email"
+    api_key = os.getenv("BREVO_API_KEY")
 
-        payload = {
-            "sender": {"email": os.getenv("EMAIL_USER"), "name": "Codechype"},
-            "to": [{"email": os.getenv("EMAIL_USER")}],
-            "subject": f"New Contact Message – {name}",
-            "htmlContent": f"""
-                <h2>New Contact Message</h2>
-                <p><b>Name:</b> {name}</p>
-                <p><b>Email:</b> {email}</p>
-                <p><b>Phone:</b> {phone}</p>
-                <p><b>Subject:</b> {subject}</p>
-                <p><b>Message:</b> {message}</p>
-            """
-        }
+    payload = {
+        "sender": {"email": os.getenv("EMAIL_USER"), "name": "Codechype"},
+        "to": [{"email": os.getenv("EMAIL_USER")}],
+        "subject": f"New Contact Message From {name}",
+        "htmlContent": f"""
+            <h2>New Contact Form Message</h2>
+            <p><strong>Name:</strong> {name}</p>
+            <p><strong>Email:</strong> {email}</p>
+            <p><strong>Phone:</strong> {phone}</p>
+            <p><strong>Subject:</strong> {subject}</p>
+            <p><strong>Message:</strong><br>{message}</p>
+        """
+    }
 
-        headers = {
-            "accept": "application/json",
-            "api-key": api_key,
-            "content-type": "application/json"
-        }
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
 
-        response = requests.post(url, json=payload, headers=headers)
-        print("📧 Brevo Response:", response.status_code, response.text)
-
-    except Exception as e:
-        print("❌ Email Error:", e)
+    res = requests.post(url, json=payload, headers=headers)
+    print("📧 Brevo API Response:", res.status_code, res.text)
 
 
 # -------------------------------
-# 📮 SAVE CONTACT FORM MESSAGE
+# SAVE CONTACT MESSAGE
 # -------------------------------
 @app.route("/api/contact", methods=["POST"])
 def contact():
@@ -87,26 +84,26 @@ def contact():
 
     try:
         cur = conn.cursor()
-        sql = """INSERT INTO contact_messages (name, email, phone, subject, message)
-                 VALUES (%s, %s, %s, %s, %s)"""
+        sql = """
+            INSERT INTO contact_messages (name, email, phone, subject, message)
+            VALUES (%s, %s, %s, %s, %s)
+        """
         cur.execute(sql, (name, email, phone, subject, message))
         conn.commit()
         cur.close()
         conn.close()
-
-        print("✅ Message Saved")
 
         send_email(name, email, phone, subject, message)
 
         return jsonify({"success": True, "message": "Message sent successfully!"})
 
     except Exception as e:
-        print("❌ DB Insert Error:", e)
+        print("❌ Database error:", e)
         return jsonify({"success": False, "message": "Server error"}), 500
 
 
 # -------------------------------
-# 📥 FETCH ALL CONTACT MESSAGES
+# FETCH ALL MESSAGES
 # -------------------------------
 @app.route("/api/messages", methods=["GET"])
 def get_messages():
@@ -115,45 +112,33 @@ def get_messages():
         return jsonify({"success": False, "message": "DB not connected"}), 500
 
     try:
-        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT * FROM contact_messages ORDER BY id DESC")
         rows = cur.fetchall()
         cur.close()
         conn.close()
-
         return jsonify(rows)
-
     except Exception as e:
-        print("❌ Fetch Error:", e)
+        print("❌ Fetch error:", e)
         return jsonify({"success": False, "message": "Server error"}), 500
 
 
 # -------------------------------
-# 🗑️ DELETE A MESSAGE
+# DELETE MESSAGE
 # -------------------------------
-@app.route("/api/messages/<int:msg_id>", methods=["DELETE"])
-def delete_message(msg_id):
+@app.route("/api/messages/<int:id>", methods=["DELETE"])
+def delete_msg(id):
     conn = get_db_connection()
     if conn is None:
         return jsonify({"success": False, "message": "DB not connected"}), 500
 
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM contact_messages WHERE id = %s", (msg_id,))
+        cur.execute("DELETE FROM contact_messages WHERE id=%s", (id,))
         conn.commit()
         cur.close()
         conn.close()
-
-        print(f"🗑️ Deleted message {msg_id}")
-
-        return jsonify({"success": True, "message": "Message deleted successfully"})
-
+        return jsonify({"success": True})
     except Exception as e:
-        print("❌ Delete Error:", e)
-        return jsonify({"success": False, "message": "Delete failed"}), 500
-
-
-# ----------------------------------------------------
-# ❗ IMPORTANT: DO NOT USE app.run() ON RENDER
-# Gunicorn will run automatically
-# ----------------------------------------------------
+        print("❌ Delete error:", e)
+        return jsonify({"success": False})
